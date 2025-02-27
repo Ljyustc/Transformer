@@ -13,6 +13,7 @@ class ProblemAnswerDataset(Dataset):
             eos_token_id (int): End-of-sequence token ID.
         """
         self.data = self.load_jsonl(file_path)
+        self.data.sort(key=lambda x: len(x["question"].split(' ')))
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.eos_token_id = tokenizer.eos_token_id
@@ -26,20 +27,27 @@ class ProblemAnswerDataset(Dataset):
         return data
     
     def split_answer(self, answer):
-        sentences = answer.split('\n')
-        sentences = sentences[:-2] + [sentences[-2]+'\n'+sentences[-1]]  # 总结数值结果不算一步
+        answer = answer.replace('\n\n', '\n')
+        try:
+            sentences = answer.split('\n')
+            sentences = sentences[:-2] + [sentences[-2]+'\n'+sentences[-1]]  # 总结数值结果不算一步
+        except:
+            sentences = answer.split('. ')
         num_sentences = len(sentences)
+        
+        if num_sentences <= self.num_splits:
+            splits = sentences
+        else:
+            # 计算每个 chunk 的大致大小
+            avg_chunk_size = num_sentences / self.num_splits
+            splits = []
+            start_idx = 0
 
-        # 计算每个 chunk 的大致大小
-        avg_chunk_size = num_sentences / self.num_splits
-        splits = []
-        start_idx = 0
-
-        for i in range(self.num_splits):
-            # 计算当前 chunk 的结束索引
-            end_idx = round((i + 1) * avg_chunk_size)  # 四舍五入取整，确保所有句子都分配
-            splits.append(" ".join(sentences[start_idx:end_idx]).strip())  # 组合句子
-            start_idx = end_idx  # 更新索引
+            for i in range(self.num_splits):
+                # 计算当前 chunk 的结束索引
+                end_idx = round((i + 1) * avg_chunk_size)  # 四舍五入取整，确保所有句子都分配
+                splits.append(" ".join(sentences[start_idx:end_idx]).strip())  # 组合句子
+                start_idx = end_idx  # 更新索引
 
         # 确保始终有num_splits段
         while len(splits) < self.num_splits:
@@ -55,14 +63,14 @@ class ProblemAnswerDataset(Dataset):
         answer = item["answer"]
         
         # Tokenize
-        problem_tokens = torch.tensor(self.tokenizer.encode(problem), dtype=torch.long)
+        problem_tokens = torch.tensor(self.tokenizer.encode(problem, max_length=900, truncation=True), dtype=torch.long)
 
         answer_splits = self.split_answer(answer)
         # 生成num_splits个 `targets`
         targets = []
         for i in range(self.num_splits):
             target_text = answer_splits[i]
-            target_tokens = torch.tensor(self.tokenizer.encode("\n" + target_text) + [self.eos_token_id], dtype=torch.long)
+            target_tokens = torch.tensor(self.tokenizer.encode("\n" + target_text, max_length=256, truncation=True) + [self.eos_token_id], dtype=torch.long)
             targets.append(target_tokens)
         
         return {
@@ -71,16 +79,17 @@ class ProblemAnswerDataset(Dataset):
         }
 
 class CollateFn:
-    def __init__(self, pad_token_id):
+    def __init__(self, pad_token_id, pack_len=512):
         self.pad_token_id = pad_token_id
+        self.pack_len = pack_len
     
     def __call__(self, batch):
         """Collate function for dynamic padding."""
-        max_input_len = max(len(item["input_ids"]) for item in batch)
+        max_input_len = max(max(len(item["input_ids"]) for item in batch), 128)
         num_splits = len(batch[0]["targets"])
 
          # 计算 num_splits 个 `targets` 的最大长度
-        max_target_lens = [max(len(item["targets"][i]) for item in batch) for i in range(num_splits)]
+        max_target_lens = [max(max(len(item["targets"][i]) for item in batch), 256) for i in range(num_splits)]
 
         # Padding
         input_ids = []

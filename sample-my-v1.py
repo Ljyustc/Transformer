@@ -5,11 +5,11 @@ import os
 import torch
 import json
 from transformers import GPT2Tokenizer
-from model import ModelM
+from model_v2 import ModelM
 
 # -----------------------------------------------------------------------------
 init_from = ('resume', 'resume', 'resume')  # 'resume' 或者指定预训练的 GPT-2 模型 (例如 'gpt2-xl')
-checkpoint_name = 'ckpt_20250211_165724.pt'
+checkpoint_name = 'ckpt_20250221_194257_v1_ddp_CogMath_batch256.pt'
 out_dir = 'out'  # 如果 init_from 是 'resume'，这里会用到
 start = "\n"  # 或 "<|endoftext|>" 或其他自定义起始文本
 num_iterations = 5
@@ -18,11 +18,11 @@ max_new_tokens = 256  # 每个样本生成的最大token数量
 temperature = 0.8  # 控制生成随机性的温度
 top_k = 200  # top_k 策略
 seed = 1337
-device = 'cuda:3'  # 设备设置
+device = 'cuda:0'  # 设备设置
 compile = False  # 是否使用 PyTorch 2.0 编译加速
 # 读取输入文件并进行编码
-input_file = '/data/jyliu/transformer_project/nanoGPT-master/data/gsm8k/test.jsonl'
-output_file = '/data/jyliu/transformer_project/our_model/test_results/test_output_' + checkpoint_name[:-3] + '.json'
+input_file = '/data/jyliu/transformer_project/nanoGPT-master/data/gsm8k/train.jsonl'
+output_file = '/data/jyliu/transformer_project/our_model/test_results/train_output_' + checkpoint_name[:-3] + '.json'
 batch_size = 64
 # -----------------------------------------------------------------------------
 
